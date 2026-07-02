@@ -157,7 +157,7 @@ describe('Recommendations', () => {
     expect(screen.queryByRole('button', { name: 'Go to recommendation 3' })).not.toBeInTheDocument();
   });
 
-  it('pauses by default when reduced motion is preferred', () => {
+  it('pauses by default when reduced motion is preferred', async () => {
     const matchMediaSpy = jest.spyOn(window, 'matchMedia').mockImplementation(
       () =>
         ({
@@ -170,7 +170,8 @@ describe('Recommendations', () => {
     try {
       render(<Recommendations />);
 
-      expect(screen.getByRole('button', { name: 'Resume' })).toBeInTheDocument();
+      // findBy flushes the RecommendationExisting overview fetch inside act before asserting.
+      expect(await screen.findByRole('button', { name: 'Resume' })).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Pause' })).not.toBeInTheDocument();
     } finally {
       matchMediaSpy.mockRestore();
