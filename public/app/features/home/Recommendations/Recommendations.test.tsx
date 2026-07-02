@@ -1,10 +1,85 @@
 import { act, render, screen, userEvent } from 'test/test-utils';
 
+import { useAppPluginMetas } from '@grafana/runtime/internal';
+import { contextSrv } from 'app/core/services/context_srv';
+import { usePluginBridge } from 'app/features/alerting/unified/hooks/usePluginBridge';
+
 import Recommendations from './Recommendations';
 
+jest.mock('@grafana/runtime/internal', () => ({
+  ...jest.requireActual('@grafana/runtime/internal'),
+  useAppPluginMetas: jest.fn(),
+}));
+
+jest.mock('app/features/alerting/unified/hooks/usePluginBridge', () => ({
+  ...jest.requireActual('app/features/alerting/unified/hooks/usePluginBridge'),
+  usePluginBridge: jest.fn(),
+}));
+
+// The RecommendationExisting child fetches its overview from Prometheus; resolve to an empty
+// cluster so tests exercise the (deterministic) stub entries instead of hitting a datasource.
+jest.mock('./kubernetesData', () => ({
+  ...jest.requireActual('./kubernetesData'),
+  fetchKubernetesOverview: jest.fn().mockResolvedValue({
+    clusters: 0,
+    pods: 0,
+    unhealthyPods: null,
+    restarts1h: null,
+    notReadyNodes: null,
+  }),
+}));
+
+const mockUsePluginBridge = jest.mocked(usePluginBridge);
+const mockUseAppPluginMetas = jest.mocked(useAppPluginMetas);
+
+beforeEach(() => {
+  window.localStorage.clear();
+  mockUsePluginBridge.mockReturnValue({ loading: false, installed: true });
+  mockUseAppPluginMetas.mockReturnValue({ loading: false, error: undefined, value: [] });
+  jest.spyOn(contextSrv, 'hasPermission').mockReturnValue(true);
+});
+
+afterEach(() => jest.restoreAllMocks());
+
 describe('Recommendations', () => {
-  beforeEach(() => {
-    window.localStorage.clear();
+  it('renders nothing while plugin data is loading', () => {
+    mockUsePluginBridge.mockReturnValue({ loading: true });
+
+    const { container } = render(<Recommendations />);
+
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('renders nothing when Kubernetes Monitoring is not installed', () => {
+    mockUsePluginBridge.mockReturnValue({ loading: false, installed: false });
+
+    const { container } = render(<Recommendations />);
+
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('renders nothing when the user cannot manage plugins', () => {
+    jest.mocked(contextSrv.hasPermission).mockReturnValue(false);
+    jest.spyOn(contextSrv, 'hasRole').mockReturnValue(false);
+
+    const { container } = render(<Recommendations />);
+
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('drops recommendations whose app is already enabled', async () => {
+    mockUseAppPluginMetas.mockReturnValue({
+      loading: false,
+      error: undefined,
+      // Metas only need ids for the installed-filter; the full PluginMeta shape is irrelevant here.
+      value: [{ id: 'grafana-exploretraces-app' }, { id: 'grafana-synthetic-monitoring-app' }] as never,
+    });
+
+    render(<Recommendations />);
+
+    // findBy flushes the RecommendationExisting overview fetch inside act before asserting.
+    expect(await screen.findByRole('link', { name: /Enable Application Observability/ })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Enable Hosted Traces/ })).not.toBeInTheDocument();
   });
 
   it('collapses and expands the recommendations card', async () => {

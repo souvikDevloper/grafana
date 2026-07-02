@@ -3,6 +3,8 @@ import { css } from '@emotion/css';
 import { type GrafanaTheme2 } from '@grafana/data';
 import { Icon, LinkButton, Stack, Text, useStyles2 } from '@grafana/ui';
 
+import { recommendationEnableClicked } from '../analytics/main';
+
 import type { RecommendationItem } from './Recommendations';
 
 export default function RecommendationCard({ recommendation }: { recommendation: RecommendationItem }) {
@@ -33,6 +35,7 @@ export default function RecommendationCard({ recommendation }: { recommendation:
           icon="arrow-right"
           iconPlacement="right"
           href={recommendation.href}
+          onClick={() => recommendationEnableClicked({ recommendation_id: recommendation.id })}
         >
           {recommendation.action}
         </LinkButton>
