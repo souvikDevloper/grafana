@@ -99,8 +99,14 @@ function buildKubernetesItem(
   if (!settings || !canAccessPluginPage(settings, bridgePath)) {
     return null;
   }
-  // Wrap the raw /a/... bridge path so copy-link / open-in-new-tab is correct under config.appSubUrl.
+  // Wrap the raw /a/... bridge paths so copy-link / open-in-new-tab is correct under config.appSubUrl.
   const href = locationUtil.assureBaseUrl(bridgePath);
+  // The alert strip's View drills into the app's alerts page; fall back to the app home if the
+  // include role/action semantics deny that specific page.
+  const alertsBridgePath = createBridgeURL(KUBERNETES_APP_ID, '/alerts');
+  const alertsHref = canAccessPluginPage(settings, alertsBridgePath)
+    ? locationUtil.assureBaseUrl(alertsBridgePath)
+    : href;
 
   // Filter on the RAW signal (>0), display with Math.ceil: a 0.4 restart signal keeps computeHealth at
   // 'warning' but must not round to "0 restarts", and increase() yields fractions we never want to show.
@@ -162,7 +168,7 @@ function buildKubernetesItem(
               : healthRows[0],
           secondary: (alertsFiring > 0 ? healthRows : healthRows.slice(1)).join(' · ') || undefined,
           action: t('home.recommendations.kubernetes.view', 'View'),
-          href,
+          href: alertsHref,
         }
       : undefined,
     action: t('home.recommendations.kubernetes.action', 'Open K8s app'),

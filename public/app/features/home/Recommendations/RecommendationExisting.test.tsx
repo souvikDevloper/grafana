@@ -126,6 +126,8 @@ describe('RecommendationExisting', () => {
 
     expect(await screen.findByText('2 alerts firing')).toBeInTheDocument();
     expect(screen.getByText(/14 restarts in the last hour/)).toBeInTheDocument();
+    // The strip's View drills into the app's alerts page, not the app home.
+    expect(screen.getByRole('link', { name: /View/ })).toHaveAttribute('href', '/a/grafana-k8s-app/alerts');
   });
 
   it('falls back to the stubbed solutions when no clusters resolve', async () => {
