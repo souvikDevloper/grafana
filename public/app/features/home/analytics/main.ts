@@ -1,6 +1,11 @@
 import { defineFeatureEvents } from '@grafana/runtime/unstable';
 
-import { type ClearHistoryClicked, type EmptyCtaClicked, type TabChanged } from './types';
+import {
+  type ClearHistoryClicked,
+  type EmptyCtaClicked,
+  type RecommendationEnableClicked,
+  type TabChanged,
+} from './types';
 
 const createHomepageEvent = defineFeatureEvents('grafana', 'homepage');
 
@@ -12,3 +17,8 @@ export const clearHistoryClicked = createHomepageEvent<ClearHistoryClicked>('cle
 
 /** Fired when the user clicks the empty-state call-to-action on the Recent tab. */
 export const emptyCtaClicked = createHomepageEvent<EmptyCtaClicked>('empty_cta_clicked');
+
+/** Fired when the user clicks the Enable CTA on a homepage recommendation card. */
+export const recommendationEnableClicked = createHomepageEvent<RecommendationEnableClicked>(
+  'recommendation_enable_clicked'
+);

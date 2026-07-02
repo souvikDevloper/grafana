@@ -14,3 +14,8 @@ export interface EmptyCtaClicked extends EventProperty {
   /** Which empty-state button was clicked. */
   cta_type: 'create_dashboard' | 'browse_dashboards';
 }
+
+export interface RecommendationEnableClicked extends EventProperty {
+  /** Stable id of the recommendation whose Enable CTA was clicked. */
+  recommendation_id: string;
+}
