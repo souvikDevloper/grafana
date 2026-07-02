@@ -10739,6 +10739,7 @@
       },
       "kubernetes": {
         "action": "Open K8s app",
+        "alerts-firing": "{{value}} alerts firing",
         "cluster-cpu": "Cluster CPU · last 24h",
         "clusters": "{{value}} clusters",
         "pods": "{{value}} pods",

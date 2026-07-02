@@ -127,8 +127,11 @@ function buildKubernetesItem(
     );
   }
 
+  const alertsFiring = overview.alertsFiring ?? 0;
   const health = computeHealth(overview);
-  const showAlert = health !== null && health.severity !== 'healthy' && healthRows.length > 0;
+  // Every positive signal contributes either the firing count or a health row, so a non-healthy
+  // verdict always has content to show.
+  const showAlert = health !== null && health.severity !== 'healthy';
 
   return {
     title: t('home.recommendations.kubernetes.title', 'Kubernetes Monitoring'),
@@ -149,8 +152,15 @@ function buildKubernetesItem(
       : undefined,
     alert: showAlert
       ? {
-          primary: healthRows[0],
-          secondary: healthRows.length > 1 ? healthRows.slice(1).join(' · ') : undefined,
+          // The firing-alert count leads when present (matching the design); health rows follow as
+          // the detail line. Without firing alerts the worst health row takes the lead instead.
+          primary:
+            alertsFiring > 0
+              ? t('home.recommendations.kubernetes.alerts-firing', '{{value}} alerts firing', {
+                  value: alertsFiring.toLocaleString(),
+                })
+              : healthRows[0],
+          secondary: (alertsFiring > 0 ? healthRows : healthRows.slice(1)).join(' · ') || undefined,
           action: t('home.recommendations.kubernetes.view', 'View'),
           href,
         }

@@ -27,6 +27,7 @@ const settings = { id: 'grafana-k8s-app' } as PluginMeta<{}>;
 const healthyOverview: KubernetesOverview = {
   clusters: 3,
   pods: 247,
+  alertsFiring: null,
   unhealthyPods: 0,
   restarts1h: 0,
   notReadyNodes: 0,
@@ -99,6 +100,7 @@ describe('RecommendationExisting', () => {
     mockFetchOverview.mockResolvedValue({
       clusters: 3,
       pods: 247,
+      alertsFiring: null,
       unhealthyPods: 2,
       restarts1h: 14,
       notReadyNodes: null,
@@ -107,6 +109,22 @@ describe('RecommendationExisting', () => {
     render(<RecommendationExisting />);
 
     expect(await screen.findByText('2 pods pending or failed')).toBeInTheDocument();
+    expect(screen.getByText(/14 restarts in the last hour/)).toBeInTheDocument();
+  });
+
+  it('leads the alert strip with the firing-alert count when Prometheus reports one', async () => {
+    mockFetchOverview.mockResolvedValue({
+      clusters: 3,
+      pods: 247,
+      alertsFiring: 2,
+      unhealthyPods: 0,
+      restarts1h: 14,
+      notReadyNodes: 0,
+    });
+
+    render(<RecommendationExisting />);
+
+    expect(await screen.findByText('2 alerts firing')).toBeInTheDocument();
     expect(screen.getByText(/14 restarts in the last hour/)).toBeInTheDocument();
   });
 

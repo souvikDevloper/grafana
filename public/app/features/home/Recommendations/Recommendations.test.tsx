@@ -23,6 +23,7 @@ jest.mock('./kubernetesData', () => ({
   fetchKubernetesOverview: jest.fn().mockResolvedValue({
     clusters: 0,
     pods: 0,
+    alertsFiring: null,
     unhealthyPods: null,
     restarts1h: null,
     notReadyNodes: null,
