@@ -27,6 +27,7 @@ jest.mock('./kubernetesData', () => ({
     restarts1h: null,
     notReadyNodes: null,
   }),
+  fetchClusterCpuSeries: jest.fn().mockResolvedValue(null),
 }));
 
 const mockUsePluginBridge = jest.mocked(usePluginBridge);

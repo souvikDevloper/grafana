@@ -1,10 +1,10 @@
 import { render, screen, within } from 'test/test-utils';
 
-import { type PluginMeta } from '@grafana/data';
+import { createDataFrame, FieldType, type PluginMeta } from '@grafana/data';
 import { usePluginBridge } from 'app/features/alerting/unified/hooks/usePluginBridge';
 
 import RecommendationExisting from './RecommendationExisting';
-import { fetchKubernetesOverview, type KubernetesOverview } from './kubernetesData';
+import { fetchClusterCpuSeries, fetchKubernetesOverview, type KubernetesOverview } from './kubernetesData';
 
 jest.mock('app/features/alerting/unified/hooks/usePluginBridge', () => ({
   ...jest.requireActual('app/features/alerting/unified/hooks/usePluginBridge'),
@@ -14,10 +14,12 @@ jest.mock('app/features/alerting/unified/hooks/usePluginBridge', () => ({
 jest.mock('./kubernetesData', () => ({
   ...jest.requireActual('./kubernetesData'),
   fetchKubernetesOverview: jest.fn(),
+  fetchClusterCpuSeries: jest.fn(),
 }));
 
 const mockUsePluginBridge = jest.mocked(usePluginBridge);
 const mockFetchOverview = jest.mocked(fetchKubernetesOverview);
+const mockFetchCpuSeries = jest.mocked(fetchClusterCpuSeries);
 
 // No `includes` entry for the bridge path means canAccessPluginPage grants access.
 const settings = { id: 'grafana-k8s-app' } as PluginMeta<{}>;
@@ -33,6 +35,7 @@ const healthyOverview: KubernetesOverview = {
 beforeEach(() => {
   mockUsePluginBridge.mockReturnValue({ loading: false, installed: true, settings });
   mockFetchOverview.mockResolvedValue(healthyOverview);
+  mockFetchCpuSeries.mockResolvedValue(null);
 });
 
 afterEach(() => jest.restoreAllMocks());
@@ -71,7 +74,25 @@ describe('RecommendationExisting', () => {
     expect(screen.getByText(/247 pods/)).toBeInTheDocument();
     // Healthy cluster — no alert strip.
     expect(screen.queryByText(/pods pending or failed/)).not.toBeInTheDocument();
+    // No CPU series resolved — the sparkline block stays hidden.
+    expect(screen.queryByText('Cluster CPU · last 24h')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Open K8s app/ })).toHaveAttribute('href', '/a/grafana-k8s-app/home');
+  });
+
+  it('renders the CPU sparkline caption when the series resolves', async () => {
+    const frame = createDataFrame({
+      refId: 'cpu',
+      fields: [
+        { name: 'Time', type: FieldType.time, values: [0, 1000, 2000] },
+        { name: 'Value', type: FieldType.number, values: [1, 2, 3] },
+      ],
+    });
+    mockFetchCpuSeries.mockResolvedValue({ x: frame.fields[0], y: frame.fields[1] });
+
+    render(<RecommendationExisting />);
+
+    // jsdom never reports a container width, so the caption (not the uPlot chart) is what's observable.
+    expect(await screen.findByText('Cluster CPU · last 24h')).toBeInTheDocument();
   });
 
   it('shows an alert strip when the cluster reports problems', async () => {

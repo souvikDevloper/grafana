@@ -1,14 +1,30 @@
 import { css } from '@emotion/css';
-import { useState } from 'react';
-import { useAsyncRetry } from 'react-use';
+import { useMemo, useState } from 'react';
+import { useAsyncRetry, useMeasure } from 'react-use';
 
-import { type IconName, type GrafanaTheme2, type PluginMeta, locationUtil } from '@grafana/data';
+import {
+  type FieldConfig,
+  type FieldSparkline,
+  type IconName,
+  type GrafanaTheme2,
+  type PluginMeta,
+  locationUtil,
+} from '@grafana/data';
 import { t, Trans } from '@grafana/i18n';
-import { Button, Dropdown, Icon, LinkButton, Menu, Stack, Text, useStyles2 } from '@grafana/ui';
+import { type GraphFieldConfig, GraphGradientMode, LineInterpolation } from '@grafana/schema';
+import { Button, Dropdown, Icon, LinkButton, Menu, Sparkline, Stack, Text, useStyles2, useTheme2 } from '@grafana/ui';
 import { createBridgeURL } from 'app/features/alerting/unified/components/PluginBridge';
 import { canAccessPluginPage, usePluginBridge } from 'app/features/alerting/unified/hooks/usePluginBridge';
 
-import { computeHealth, fetchKubernetesOverview, KUBERNETES_APP_ID, type KubernetesOverview } from './kubernetesData';
+import {
+  computeHealth,
+  fetchClusterCpuSeries,
+  fetchKubernetesOverview,
+  KUBERNETES_APP_ID,
+  type KubernetesOverview,
+} from './kubernetesData';
+
+const SPARKLINE_HEIGHT = 56;
 
 interface ExistingItem {
   title: string;
@@ -16,6 +32,11 @@ interface ExistingItem {
   stats: {
     primary: string;
     secondary: string;
+  };
+  // Absent when the solution has no time series to show (e.g. the stubs, or the metric is missing).
+  sparkline?: {
+    series: FieldSparkline;
+    caption: string;
   };
   // Absent when the solution is healthy — real data only alerts when something is wrong.
   alert?: {
@@ -69,7 +90,11 @@ const stubbedExisting: ExistingItem[] = [
  * Build the Kubernetes Monitoring entry from live Prometheus data. Returns null when the user
  * cannot access the app's home page — an entry whose every action dead-ends is worse than none.
  */
-function buildKubernetesItem(overview: KubernetesOverview, settings?: PluginMeta<{}>): ExistingItem | null {
+function buildKubernetesItem(
+  overview: KubernetesOverview,
+  cpuSeries: FieldSparkline | null,
+  settings?: PluginMeta<{}>
+): ExistingItem | null {
   const bridgePath = createBridgeURL(KUBERNETES_APP_ID, '/home');
   if (!settings || !canAccessPluginPage(settings, bridgePath)) {
     return null;
@@ -116,6 +141,12 @@ function buildKubernetesItem(overview: KubernetesOverview, settings?: PluginMeta
         value: overview.pods.toLocaleString(),
       }),
     },
+    sparkline: cpuSeries
+      ? {
+          series: cpuSeries,
+          caption: t('home.recommendations.kubernetes.cluster-cpu', 'Cluster CPU · last 24h'),
+        }
+      : undefined,
     alert: showAlert
       ? {
           primary: healthRows[0],
@@ -135,12 +166,15 @@ export default function RecommendationExisting() {
   // Resolved from Prometheus (kube-state-metrics), not a plugin REST endpoint — the k8s app has no
   // summary API. While loading or on error the entry is simply omitted and the stubs remain.
   const { value: overview } = useAsyncRetry(fetchKubernetesOverview, []);
+  // Fetched separately so a missing cAdvisor metric only costs the chart, never the whole entry.
+  const { value: cpuSeries } = useAsyncRetry(fetchClusterCpuSeries, []);
 
   // Track selection by title so it survives the Kubernetes item appearing once its data resolves;
   // storing the item object would go stale when the list is rebuilt.
   const [selectedTitle, setSelectedTitle] = useState<string>();
 
-  const kubernetesItem = overview && overview.clusters > 0 ? buildKubernetesItem(overview, settings) : null;
+  const kubernetesItem =
+    overview && overview.clusters > 0 ? buildKubernetesItem(overview, cpuSeries ?? null, settings) : null;
   const existing = kubernetesItem ? [kubernetesItem, ...stubbedExisting] : stubbedExisting;
   const selected = existing.find((item) => item.title === selectedTitle) ?? existing[0];
 
@@ -203,6 +237,8 @@ export default function RecommendationExisting() {
           </Text>
         </Stack>
 
+        {selected.sparkline && <SolutionSparkline sparkline={selected.sparkline} />}
+
         {selected.alert && (
           <div className={styles.alert}>
             <Stack direction="row" alignItems="center" gap={1}>
@@ -247,6 +283,46 @@ export default function RecommendationExisting() {
           {selected.action}
         </LinkButton>
       </Stack>
+    </Stack>
+  );
+}
+
+function SolutionSparkline({ sparkline }: { sparkline: NonNullable<ExistingItem['sparkline']> }) {
+  const theme = useTheme2();
+  // Measure the container directly (ResizeObserver); a bare flex child gives AutoSizer width 0.
+  const [measureRef, { width }] = useMeasure<HTMLDivElement>();
+
+  // Blue line with a soft gradient fill, matching the design. Memoized so Sparkline (memo) is stable.
+  const sparklineConfig = useMemo<FieldConfig<GraphFieldConfig>>(
+    () => ({
+      color: { mode: 'fixed', fixedColor: 'blue' },
+      custom: {
+        lineWidth: 2,
+        fillOpacity: 30,
+        gradientMode: GraphGradientMode.Opacity,
+        lineInterpolation: LineInterpolation.Smooth,
+      },
+    }),
+    []
+  );
+
+  return (
+    <Stack direction="column" gap={0}>
+      <div ref={measureRef} style={{ height: SPARKLINE_HEIGHT }}>
+        {/* width is 0 until ResizeObserver reports; Sparkline throws in uPlot at width 0. */}
+        {width > 0 && (
+          <Sparkline
+            width={width}
+            height={SPARKLINE_HEIGHT}
+            sparkline={sparkline.series}
+            config={sparklineConfig}
+            theme={theme}
+          />
+        )}
+      </div>
+      <Text variant="bodySmall" color="secondary">
+        {sparkline.caption}
+      </Text>
     </Stack>
   );
 }

@@ -1,4 +1,6 @@
-import { readScalar, runInstantQueries } from './promQuery';
+import { type FieldSparkline } from '@grafana/data';
+
+import { readScalar, readSeries, runInstantQueries, runRangeQuery } from './promQuery';
 
 export const KUBERNETES_APP_ID = 'grafana-k8s-app';
 
@@ -60,4 +62,19 @@ export async function fetchKubernetesOverview(): Promise<KubernetesOverview> {
     restarts1h: readScalar(frames, 'restarts1h'),
     notReadyNodes: readScalar(frames, 'notReadyNodes'),
   };
+}
+
+/**
+ * Aggregate cluster CPU usage over the last 24h as a sparkline series. Portable cAdvisor PromQL (no
+ * recording rules); returns null when the target Prometheus lacks the metric so the caller can omit
+ * the sparkline without surfacing an error.
+ */
+export async function fetchClusterCpuSeries(): Promise<FieldSparkline | null> {
+  const frames = await runRangeQuery(
+    'prometheus',
+    'cpu',
+    'sum(rate(container_cpu_usage_seconds_total{container!=""}[5m]))',
+    24
+  );
+  return readSeries(frames, 'cpu');
 }
