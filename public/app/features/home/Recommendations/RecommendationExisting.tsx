@@ -263,7 +263,7 @@ export default function RecommendationExisting() {
 
         {selected.alert && (
           <div className={styles.alert}>
-            <Stack direction="row" alignItems="center" gap={1}>
+            <Stack direction="row" alignItems="center">
               <Icon name="exclamation-triangle" size="md" className={styles.warning} />
 
               <div className={cx(styles.metaRow, styles.alertText)}>
