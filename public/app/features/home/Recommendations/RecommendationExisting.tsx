@@ -1,21 +1,14 @@
 import { css, cx } from '@emotion/css';
-import { useMemo, useState } from 'react';
-import { useAsyncRetry, useMeasure } from 'react-use';
+import { useState } from 'react';
+import { useAsyncRetry } from 'react-use';
 
-import {
-  type FieldConfig,
-  type FieldSparkline,
-  type IconName,
-  type GrafanaTheme2,
-  type PluginMeta,
-  locationUtil,
-} from '@grafana/data';
+import { type FieldSparkline, type IconName, type GrafanaTheme2, type PluginMeta, locationUtil } from '@grafana/data';
 import { t, Trans } from '@grafana/i18n';
-import { type GraphFieldConfig, GraphGradientMode, LineInterpolation } from '@grafana/schema';
-import { Button, Dropdown, Icon, LinkButton, Menu, Sparkline, Stack, Text, useStyles2, useTheme2 } from '@grafana/ui';
+import { Button, Dropdown, Icon, LinkButton, Menu, Stack, Text, useStyles2 } from '@grafana/ui';
 import { createBridgeURL } from 'app/features/alerting/unified/components/PluginBridge';
 import { canAccessPluginPage, usePluginBridge } from 'app/features/alerting/unified/hooks/usePluginBridge';
 
+import SolutionSparkline, { type SolutionSparklineData } from './SolutionSparkline';
 import {
   computeHealth,
   fetchClusterCpuSeries,
@@ -23,8 +16,6 @@ import {
   KUBERNETES_APP_ID,
   type KubernetesOverview,
 } from './kubernetesData';
-
-const SPARKLINE_HEIGHT = 56;
 
 interface ExistingItem {
   title: string;
@@ -34,10 +25,7 @@ interface ExistingItem {
     secondary: string;
   };
   // Absent when the solution has no time series to show (e.g. the stubs, or the metric is missing).
-  sparkline?: {
-    series: FieldSparkline;
-    caption: string;
-  };
+  sparkline?: SolutionSparklineData;
   // Absent when the solution is healthy — real data only alerts when something is wrong.
   // `secondary` is a list of detail segments so separators can be drawn (and dropped) per segment.
   alert?: {
@@ -308,46 +296,6 @@ export default function RecommendationExisting() {
           {selected.action}
         </LinkButton>
       </Stack>
-    </Stack>
-  );
-}
-
-function SolutionSparkline({ sparkline }: { sparkline: NonNullable<ExistingItem['sparkline']> }) {
-  const theme = useTheme2();
-  // Measure the container directly (ResizeObserver); a bare flex child gives AutoSizer width 0.
-  const [measureRef, { width }] = useMeasure<HTMLDivElement>();
-
-  // Blue line with a soft gradient fill, matching the design. Memoized so Sparkline (memo) is stable.
-  const sparklineConfig = useMemo<FieldConfig<GraphFieldConfig>>(
-    () => ({
-      color: { mode: 'fixed', fixedColor: 'blue' },
-      custom: {
-        lineWidth: 2,
-        fillOpacity: 30,
-        gradientMode: GraphGradientMode.Opacity,
-        lineInterpolation: LineInterpolation.Smooth,
-      },
-    }),
-    []
-  );
-
-  return (
-    <Stack direction="column">
-      <div ref={measureRef} style={{ height: SPARKLINE_HEIGHT }}>
-        {/* width is 0 until ResizeObserver reports; Sparkline throws in uPlot at width 0. */}
-        {width > 0 && (
-          <Sparkline
-            width={width}
-            height={SPARKLINE_HEIGHT}
-            sparkline={sparkline.series}
-            config={sparklineConfig}
-            theme={theme}
-          />
-        )}
-      </div>
-      <Text variant="bodySmall" color="secondary">
-        {sparkline.caption}
-      </Text>
     </Stack>
   );
 }
