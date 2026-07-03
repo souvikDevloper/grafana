@@ -219,7 +219,7 @@ export default function RecommendationExisting() {
         }
       >
         <Button variant="secondary" fill="text" className={styles.dropdown}>
-          <Stack direction="row" gap={1} alignItems="center">
+          <Stack direction="row" alignItems="center">
             <div className={styles.icon}>
               <Icon name={selected.icon} size="lg" />
             </div>
@@ -296,7 +296,7 @@ export default function RecommendationExisting() {
         )}
       </Stack>
 
-      <Stack direction="row" alignItems="center" gap={1}>
+      <Stack direction="row" alignItems="center">
         <LinkButton
           variant="secondary"
           size="md"
