@@ -332,7 +332,7 @@ function SolutionSparkline({ sparkline }: { sparkline: NonNullable<ExistingItem[
   );
 
   return (
-    <Stack direction="column" gap={0}>
+    <Stack direction="column">
       <div ref={measureRef} style={{ height: SPARKLINE_HEIGHT }}>
         {/* width is 0 until ResizeObserver reports; Sparkline throws in uPlot at width 0. */}
         {width > 0 && (
