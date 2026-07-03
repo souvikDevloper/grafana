@@ -1,4 +1,4 @@
-import { css } from '@emotion/css';
+import { css, cx } from '@emotion/css';
 import { useMemo, useState } from 'react';
 import { useAsyncRetry, useMeasure } from 'react-use';
 
@@ -39,9 +39,10 @@ interface ExistingItem {
     caption: string;
   };
   // Absent when the solution is healthy — real data only alerts when something is wrong.
+  // `secondary` is a list of detail segments so separators can be drawn (and dropped) per segment.
   alert?: {
     primary: string;
-    secondary?: string;
+    secondary?: string[];
     action: string;
     href: string;
   };
@@ -61,7 +62,7 @@ const stubbedExisting: ExistingItem[] = [
     },
     alert: {
       primary: '3 hosts above 90% disk',
-      secondary: 'web-03 critical at 96% — ~6 h to full',
+      secondary: ['web-03 critical at 96%, ~6 h to full'],
       action: 'View',
       href: '#',
     },
@@ -77,7 +78,7 @@ const stubbedExisting: ExistingItem[] = [
     },
     alert: {
       primary: 'Ingest spike detected',
-      secondary: 'checkout-service logs up 3x in the last hour',
+      secondary: ['checkout-service logs up 3x in the last hour'],
       action: 'View',
       href: '#',
     },
@@ -166,7 +167,7 @@ function buildKubernetesItem(
                   value: alertsFiring.toLocaleString(),
                 })
               : healthRows[0],
-          secondary: (alertsFiring > 0 ? healthRows : healthRows.slice(1)).join(' · ') || undefined,
+          secondary: alertsFiring > 0 ? healthRows : healthRows.slice(1),
           action: t('home.recommendations.kubernetes.view', 'View'),
           href: alertsHref,
         }
@@ -243,15 +244,20 @@ export default function RecommendationExisting() {
       </Dropdown>
 
       <Stack direction="column" gap={2}>
-        <Stack direction="row" alignItems="baseline" columnGap={0.5} rowGap={0} wrap="wrap">
-          <Text variant="h2" color="primary">
-            {selected.stats.primary}
-          </Text>
-
-          <Text variant="body" color="secondary">
-            &middot; {selected.stats.secondary}
-          </Text>
-        </Stack>
+        {/* Dots live in the flex gap (::before on non-first segments); overflow-hidden clips the
+            dot of any segment that wraps to a new line, so no line ever starts with a separator. */}
+        <div className={styles.metaRow}>
+          <span className={styles.segment}>
+            <Text variant="h2" color="primary">
+              {selected.stats.primary}
+            </Text>
+          </span>
+          <span className={styles.segment}>
+            <Text variant="body" color="secondary">
+              {selected.stats.secondary}
+            </Text>
+          </span>
+        </div>
 
         {selected.sparkline && <SolutionSparkline sparkline={selected.sparkline} />}
 
@@ -260,17 +266,20 @@ export default function RecommendationExisting() {
             <Stack direction="row" alignItems="center" gap={1}>
               <Icon name="exclamation-triangle" size="md" className={styles.warning} />
 
-              <Stack direction="row" alignItems="center" columnGap={0.5} rowGap={0} flex="1 1 auto" wrap="wrap">
-                <Text variant="body" color="primary">
-                  {selected.alert.primary}
-                </Text>
-
-                {selected.alert.secondary && (
-                  <Text variant="body" color="secondary">
-                    &middot; {selected.alert.secondary}
+              <div className={cx(styles.metaRow, styles.alertText)}>
+                <span className={styles.segment}>
+                  <Text variant="body" color="primary">
+                    {selected.alert.primary}
                   </Text>
-                )}
-              </Stack>
+                </span>
+                {selected.alert.secondary?.map((segment) => (
+                  <span key={segment} className={styles.segment}>
+                    <Text variant="body" color="secondary">
+                      {segment}
+                    </Text>
+                  </span>
+                ))}
+              </div>
 
               <LinkButton
                 variant="secondary"
@@ -344,6 +353,31 @@ function SolutionSparkline({ sparkline }: { sparkline: NonNullable<ExistingItem[
 }
 
 const getStyles = (theme: GrafanaTheme2) => ({
+  // Wrapping metadata row whose '·' separators are drawn inside the column gap by each non-first
+  // segment; overflow-hidden clips the dot of a segment that starts a new line, so wrapped lines
+  // never lead with an orphaned separator.
+  metaRow: css({
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'baseline',
+    columnGap: theme.spacing(1.5),
+    rowGap: 0,
+    overflow: 'hidden',
+  }),
+  alertText: css({
+    flex: '1 1 auto',
+    minWidth: 0,
+  }),
+  segment: css({
+    position: 'relative',
+
+    '&:not(:first-child)::before': {
+      content: '"·"',
+      position: 'absolute',
+      left: theme.spacing(-1.25),
+      color: theme.colors.text.secondary,
+    },
+  }),
   dropdown: css({
     alignSelf: 'flex-start',
     height: 'auto',

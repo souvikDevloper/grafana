@@ -5,6 +5,7 @@ import { usePluginBridge } from 'app/features/alerting/unified/hooks/usePluginBr
 
 import RecommendationExisting from './RecommendationExisting';
 import { fetchClusterCpuSeries, fetchKubernetesOverview, type KubernetesOverview } from './kubernetesData';
+import { readSeries } from './promQuery';
 
 jest.mock('app/features/alerting/unified/hooks/usePluginBridge', () => ({
   ...jest.requireActual('app/features/alerting/unified/hooks/usePluginBridge'),
@@ -88,11 +89,12 @@ describe('RecommendationExisting', () => {
         { name: 'Value', type: FieldType.number, values: [1, 2, 3] },
       ],
     });
-    mockFetchCpuSeries.mockResolvedValue({ x: frame.fields[0], y: frame.fields[1] });
+    // Build the sparkline through readSeries — the production path — so the fixture carries the
+    // y.state.range that uPlot's getYRange destructures.
+    mockFetchCpuSeries.mockResolvedValue(readSeries([frame], 'cpu'));
 
     render(<RecommendationExisting />);
 
-    // jsdom never reports a container width, so the caption (not the uPlot chart) is what's observable.
     expect(await screen.findByText('Cluster CPU · last 24h')).toBeInTheDocument();
   });
 
