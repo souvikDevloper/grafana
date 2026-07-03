@@ -387,6 +387,9 @@ const getStyles = (theme: GrafanaTheme2) => ({
   }),
   inner: css({
     display: 'flex',
+    // Fill .outer so each slide stretches to the card cell and the card's
+    // space-between can pin its CTA to the bottom, matching the Existing card.
+    height: '100%',
 
     [theme.transitions.handleMotion('no-preference')]: {
       transition: theme.transitions.create(['transform']),

@@ -11,7 +11,7 @@ export default function RecommendationCard({ recommendation }: { recommendation:
   const styles = useStyles2(getStyles, recommendation.color);
 
   return (
-    <Stack direction="column" justifyContent="space-between" gap={2}>
+    <Stack direction="column" justifyContent="space-between" gap={2} flex={1}>
       <Stack direction="column" gap={2}>
         <Text element="h3" variant="h3" color="primary">
           {recommendation.title}
