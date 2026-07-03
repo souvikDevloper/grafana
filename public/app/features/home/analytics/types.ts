@@ -18,4 +18,6 @@ export interface EmptyCtaClicked extends EventProperty {
 export interface RecommendationEnableClicked extends EventProperty {
   /** Stable id of the recommendation whose Enable CTA was clicked. */
   recommendation_id: string;
+  /** Which homepage surface fired the CTA. */
+  source: 'card' | 'pill';
 }

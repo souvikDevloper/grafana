@@ -1,4 +1,4 @@
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, timeout } from 'rxjs';
 import { first } from 'rxjs/operators';
 
 import {
@@ -44,8 +44,8 @@ export function readSeries(frames: DataFrame[], refId: string): FieldSparkline |
 /**
  * Run PromQL through the shared {@link createQueryRunner | QueryRunner} against the default (else
  * first) Prometheus datasource — core plumbing owns request building, interval math, and frame
- * conversion, and the Prometheus datasource always answers with DataFrames. Throws (handled as a
- * retryable error by callers) when no datasource is configured or the query errors.
+ * conversion, and the Prometheus datasource always answers with DataFrames. Throws (surfaced as an
+ * error; callers omit the entry) when no datasource is configured or the query errors.
  */
 async function runPromQueries(queries: PromQuery[], range: TimeRange): Promise<DataFrame[]> {
   const matches = getDataSourceSrv().getList({ type: 'prometheus' });
@@ -64,8 +64,13 @@ async function runPromQueries(queries: PromQuery[], range: TimeRange): Promise<D
       maxDataPoints: 60, // stable step regardless of datasource default
       minInterval: null,
     });
+    // If the runner never emits a terminal state (e.g. its internal datasource lookup rejects),
+    // time out instead of leaving callers' useAsync in a permanent loading state.
     const data = await firstValueFrom(
-      runner.get().pipe(first((d) => d.state === LoadingState.Done || d.state === LoadingState.Error))
+      runner.get().pipe(
+        first((d) => d.state === LoadingState.Done || d.state === LoadingState.Error),
+        timeout(30_000)
+      )
     );
     if (data.state === LoadingState.Error) {
       throw new Error(data.errors?.[0]?.message ?? data.error?.message ?? 'Prometheus query failed');

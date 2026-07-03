@@ -1,4 +1,4 @@
-import { of } from 'rxjs';
+import { NEVER, of } from 'rxjs';
 
 import { createDataFrame, type DataFrame, FieldType, LoadingState, type PanelData } from '@grafana/data';
 import { createQueryRunner, type DataSourceSrv, getDataSourceSrv } from '@grafana/runtime';
@@ -133,6 +133,24 @@ describe('runInstantQueries', () => {
 
     await expect(runInstantQueries({ A: 'up' })).rejects.toThrow('Prometheus query failed');
     expect(destroy).toHaveBeenCalled();
+  });
+
+  it('rejects (and still destroys the runner) when the runner never reaches a terminal state', async () => {
+    jest.useFakeTimers();
+
+    try {
+      mockCreateQueryRunner.mockReturnValue({ run, get: () => NEVER, cancel: jest.fn(), destroy });
+
+      // Attach the rejection matcher before advancing so the TimeoutError is never unhandled.
+      const assertion = expect(runInstantQueries({ A: 'up' })).rejects.toThrow();
+
+      jest.advanceTimersByTime(30_000);
+
+      await assertion;
+      expect(destroy).toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
 

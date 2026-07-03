@@ -34,9 +34,7 @@ const OVERVIEW_QUERIES: Record<string, string> = {
 type KubernetesHealthSeverity = 'healthy' | 'warning' | 'critical';
 
 export interface KubernetesHealth {
-  // Total problems = firing alerts + unhealthy pods + not-ready nodes + recent container restarts,
-  // over the available signals.
-  issues: number;
+  // Single verdict collapsed from the available health signals.
   severity: KubernetesHealthSeverity;
 }
 
@@ -49,15 +47,15 @@ export function computeHealth(o: KubernetesOverview): KubernetesHealth | null {
   // Pods pending/failed and not-ready nodes are resources in a bad state (critical); restarts and
   // firing alerts are softer signals (warning). null counts as 0 so a partial metric set still verdicts.
   const badResources = (o.unhealthyPods ?? 0) + (o.notReadyNodes ?? 0);
-  const issues = badResources + (o.restarts1h ?? 0) + (o.alertsFiring ?? 0);
-  const severity: KubernetesHealthSeverity = issues === 0 ? 'healthy' : badResources > 0 ? 'critical' : 'warning';
-  return { issues, severity };
+  const total = badResources + (o.restarts1h ?? 0) + (o.alertsFiring ?? 0);
+  const severity: KubernetesHealthSeverity = total === 0 ? 'healthy' : badResources > 0 ? 'critical' : 'warning';
+  return { severity };
 }
 
 /**
  * Resolve overview counts from Prometheus rather than a plugin REST endpoint: the k8s app has no
  * "summary" API, so we run portable kube-state-metrics instant queries directly. Picks the default
- * Prometheus datasource, else the first — throwing (handled as a retryable error) when none.
+ * Prometheus datasource, else the first — throwing when none (the caller then omits the entry).
  */
 export async function fetchKubernetesOverview(): Promise<KubernetesOverview> {
   const frames = await runInstantQueries(OVERVIEW_QUERIES);

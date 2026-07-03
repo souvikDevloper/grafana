@@ -10746,9 +10746,12 @@
       },
       "go-to": "Go to recommendation {{index}}",
       "health": {
-        "nodes": "{{value}} nodes not ready",
-        "pods": "{{value}} pods pending or failed",
-        "restarts": "{{value}} restarts in the last hour"
+        "nodes_one": "{{count}} node not ready",
+        "nodes_other": "{{count}} nodes not ready",
+        "pods_one": "{{count}} pod pending or failed",
+        "pods_other": "{{count}} pods pending or failed",
+        "restarts_one": "{{count}} restart in the last hour",
+        "restarts_other": "{{count}} restarts in the last hour"
       },
       "hide": "Hide",
       "hosted-traces": {
@@ -10759,10 +10762,13 @@
       },
       "kubernetes": {
         "action": "Open K8s app",
-        "alerts-firing": "{{value}} alerts firing",
+        "alerts-firing_one": "{{count}} alert firing",
+        "alerts-firing_other": "{{count}} alerts firing",
         "cluster-cpu": "Cluster CPU · last 24h",
-        "clusters": "{{value}} clusters",
-        "pods": "{{value}} pods",
+        "clusters_one": "{{count}} cluster",
+        "clusters_other": "{{count}} clusters",
+        "pods_one": "{{count}} pod",
+        "pods_other": "{{count}} pods",
         "title": "Kubernetes Monitoring",
         "view": "View"
       },

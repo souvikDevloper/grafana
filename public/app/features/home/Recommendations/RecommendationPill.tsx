@@ -17,7 +17,7 @@ export default function RecommendationPill({ recommendation }: { recommendation:
       fill="solid"
       icon={recommendation.icon}
       href={recommendation.href}
-      onClick={() => recommendationEnableClicked({ recommendation_id: recommendation.id })}
+      onClick={() => recommendationEnableClicked({ recommendation_id: recommendation.id, source: 'pill' })}
       className={styles.pill}
     >
       {recommendation.action}

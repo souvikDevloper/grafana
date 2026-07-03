@@ -1,9 +1,10 @@
 import { css, cx } from '@emotion/css';
 import { useEffect, useState } from 'react';
+import { useAsync } from 'react-use';
 
 import { type GrafanaTheme2, type IconName, locationUtil } from '@grafana/data';
 import { t, Trans } from '@grafana/i18n';
-import { useAppPluginMetas } from '@grafana/runtime/internal';
+import { isAppPluginEnabled } from '@grafana/runtime';
 import { Badge, Button, Grid, Icon, Stack, Text, useStyles2 } from '@grafana/ui';
 import { useStoredBoolean } from 'app/core/hooks/useStoredBoolean';
 import { contextSrv } from 'app/core/services/context_srv';
@@ -19,7 +20,7 @@ const HOME_RECOMMENDATIONS_COLLAPSED_LOCAL_STORAGE_KEY = 'grafana.home.recommend
 
 export interface RecommendationItem {
   id: string; // stable telemetry id (recommendation_id)
-  pluginId: string; // app plugin id — drives the CTA href AND the installed-filter
+  pluginId: string; // app plugin id — drives the CTA href AND the enabled-filter
   title: string;
   icon: IconName;
   color: string | ((theme: GrafanaTheme2) => string);
@@ -32,7 +33,7 @@ export interface RecommendationItem {
 // Curated next steps after Kubernetes Monitoring. Built at render time (never at module load) so
 // `t` resolves after i18n init and `locationUtil.assureBaseUrl` sees config.appSubUrl. hrefs point
 // at the plugin page where each app can be enabled, so the section must drop entries whose plugin
-// is already installed and hide entirely from users who cannot manage plugins.
+// is already enabled and hide entirely from users who cannot manage plugins.
 function getRecommendations(): RecommendationItem[] {
   return [
     {
@@ -101,9 +102,13 @@ function getRecommendations(): RecommendationItem[] {
  */
 export default function Recommendations() {
   const { installed, loading: bridgeLoading } = usePluginBridge(KUBERNETES_APP_ID);
-  // Same source as config.apps but via the sanctioned accessor (config.apps is lint-forbidden);
-  // drops already-enabled apps so the section never recommends what the user already runs.
-  const { value: appMetas, loading: appsLoading } = useAppPluginMetas();
+  // Drop apps already enabled for this user (isAppPluginEnabled returns false for not-installed
+  // apps too), so we never recommend what they already run.
+  const { value: enabledIds, loading: enabledLoading } = useAsync(async () => {
+    const ids = getRecommendations().map((r) => r.pluginId);
+    const flags = await Promise.all(ids.map((id) => isAppPluginEnabled(id)));
+    return new Set(ids.filter((_, i) => flags[i]));
+  }, []); // recommended plugin ids are static; resolve enabled-ness once per mount
 
   // Every CTA links to /plugins/:pluginId/ — mirror that route's guard (permission OR the legacy
   // Admin/ServerAdmin roles) so we never render cards whose action the user cannot take.
@@ -114,12 +119,12 @@ export default function Recommendations() {
     contextSrv.hasRole('ServerAdmin');
 
   // Hide (not skeleton) during load so the homepage never flashes a section that then vanishes.
-  if (bridgeLoading || appsLoading || !installed || !canInstall) {
+  if (bridgeLoading || enabledLoading || !installed || !canInstall) {
     return null;
   }
 
-  const installedIds = new Set((appMetas ?? []).map((app) => app.id));
-  const recommendations = getRecommendations().filter((r) => !installedIds.has(r.pluginId));
+  // enabledIds is undefined only if the lookup failed — keep all rather than hide the section.
+  const recommendations = getRecommendations().filter((r) => !enabledIds?.has(r.pluginId));
   if (recommendations.length === 0) {
     return null;
   }
@@ -255,7 +260,12 @@ function RecommendationsView({ recommendations }: { recommendations: Recommendat
               <div className={styles.outer}>
                 <div className={styles.inner} style={{ transform: `translateX(-${safeIndex * 100}%)` }}>
                   {recommendations.map((recommendation, i) => (
-                    <div key={recommendation.id} className={styles.item} aria-hidden={i !== safeIndex}>
+                    <div
+                      key={recommendation.id}
+                      className={styles.item}
+                      aria-hidden={i !== safeIndex}
+                      {...(i !== safeIndex && { inert: '' })}
+                    >
                       <RecommendationCard recommendation={recommendation} />
                     </div>
                   ))}

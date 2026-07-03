@@ -1,6 +1,6 @@
 import { css, cx } from '@emotion/css';
 import { useState } from 'react';
-import { useAsyncRetry } from 'react-use';
+import { useAsync } from 'react-use';
 
 import { type FieldSparkline, type IconName, type GrafanaTheme2, type PluginMeta, locationUtil } from '@grafana/data';
 import { t, Trans } from '@grafana/i18n';
@@ -102,22 +102,28 @@ function buildKubernetesItem(
   const healthRows: string[] = [];
   if (overview.unhealthyPods !== null && overview.unhealthyPods > 0) {
     healthRows.push(
-      t('home.recommendations.health.pods', '{{value}} pods pending or failed', {
-        value: Math.ceil(overview.unhealthyPods),
+      t('home.recommendations.health.pods', '', {
+        count: Math.ceil(overview.unhealthyPods),
+        defaultValue_one: '{{count}} pod pending or failed',
+        defaultValue_other: '{{count}} pods pending or failed',
       })
     );
   }
   if (overview.restarts1h !== null && overview.restarts1h > 0) {
     healthRows.push(
-      t('home.recommendations.health.restarts', '{{value}} restarts in the last hour', {
-        value: Math.ceil(overview.restarts1h),
+      t('home.recommendations.health.restarts', '', {
+        count: Math.ceil(overview.restarts1h),
+        defaultValue_one: '{{count}} restart in the last hour',
+        defaultValue_other: '{{count}} restarts in the last hour',
       })
     );
   }
   if (overview.notReadyNodes !== null && overview.notReadyNodes > 0) {
     healthRows.push(
-      t('home.recommendations.health.nodes', '{{value}} nodes not ready', {
-        value: Math.ceil(overview.notReadyNodes),
+      t('home.recommendations.health.nodes', '', {
+        count: Math.ceil(overview.notReadyNodes),
+        defaultValue_one: '{{count}} node not ready',
+        defaultValue_other: '{{count}} nodes not ready',
       })
     );
   }
@@ -132,11 +138,15 @@ function buildKubernetesItem(
     title: t('home.recommendations.kubernetes.title', 'Kubernetes Monitoring'),
     icon: 'kubernetes',
     stats: {
-      primary: t('home.recommendations.kubernetes.clusters', '{{value}} clusters', {
-        value: overview.clusters.toLocaleString(),
+      primary: t('home.recommendations.kubernetes.clusters', '', {
+        count: overview.clusters,
+        defaultValue_one: '{{count}} cluster',
+        defaultValue_other: '{{count}} clusters',
       }),
-      secondary: t('home.recommendations.kubernetes.pods', '{{value}} pods', {
-        value: overview.pods.toLocaleString(),
+      secondary: t('home.recommendations.kubernetes.pods', '', {
+        count: overview.pods,
+        defaultValue_one: '{{count}} pod',
+        defaultValue_other: '{{count}} pods',
       }),
     },
     sparkline: cpuSeries
@@ -151,8 +161,10 @@ function buildKubernetesItem(
           // the detail line. Without firing alerts the worst health row takes the lead instead.
           primary:
             alertsFiring > 0
-              ? t('home.recommendations.kubernetes.alerts-firing', '{{value}} alerts firing', {
-                  value: alertsFiring.toLocaleString(),
+              ? t('home.recommendations.kubernetes.alerts-firing', '', {
+                  count: alertsFiring,
+                  defaultValue_one: '{{count}} alert firing',
+                  defaultValue_other: '{{count}} alerts firing',
                 })
               : healthRows[0],
           secondary: alertsFiring > 0 ? healthRows : healthRows.slice(1),
@@ -170,9 +182,9 @@ export default function RecommendationExisting() {
   const { settings } = usePluginBridge(KUBERNETES_APP_ID);
   // Resolved from Prometheus (kube-state-metrics), not a plugin REST endpoint — the k8s app has no
   // summary API. While loading or on error the entry is simply omitted and the stubs remain.
-  const { value: overview } = useAsyncRetry(fetchKubernetesOverview, []);
+  const { value: overview } = useAsync(fetchKubernetesOverview, []);
   // Fetched separately so a missing cAdvisor metric only costs the chart, never the whole entry.
-  const { value: cpuSeries } = useAsyncRetry(fetchClusterCpuSeries, []);
+  const { value: cpuSeries } = useAsync(fetchClusterCpuSeries, []);
 
   // Track selection by title so it survives the Kubernetes item appearing once its data resolves;
   // storing the item object would go stale when the list is rebuilt.

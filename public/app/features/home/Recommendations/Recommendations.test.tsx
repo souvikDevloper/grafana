@@ -1,14 +1,14 @@
-import { act, render, screen, userEvent } from 'test/test-utils';
+import { act, render, screen, userEvent, waitFor } from 'test/test-utils';
 
-import { useAppPluginMetas } from '@grafana/runtime/internal';
+import { isAppPluginEnabled } from '@grafana/runtime';
 import { contextSrv } from 'app/core/services/context_srv';
 import { usePluginBridge } from 'app/features/alerting/unified/hooks/usePluginBridge';
 
 import Recommendations from './Recommendations';
 
-jest.mock('@grafana/runtime/internal', () => ({
-  ...jest.requireActual('@grafana/runtime/internal'),
-  useAppPluginMetas: jest.fn(),
+jest.mock('@grafana/runtime', () => ({
+  ...jest.requireActual('@grafana/runtime'),
+  isAppPluginEnabled: jest.fn(),
 }));
 
 jest.mock('app/features/alerting/unified/hooks/usePluginBridge', () => ({
@@ -32,54 +32,53 @@ jest.mock('./kubernetesData', () => ({
 }));
 
 const mockUsePluginBridge = jest.mocked(usePluginBridge);
-const mockUseAppPluginMetas = jest.mocked(useAppPluginMetas);
+const mockIsAppPluginEnabled = jest.mocked(isAppPluginEnabled);
 
 beforeEach(() => {
   window.localStorage.clear();
   mockUsePluginBridge.mockReturnValue({ loading: false, installed: true });
-  mockUseAppPluginMetas.mockReturnValue({ loading: false, error: undefined, value: [] });
+  // All recommended apps disabled by default → every recommendation shows.
+  mockIsAppPluginEnabled.mockResolvedValue(false);
   jest.spyOn(contextSrv, 'hasPermission').mockReturnValue(true);
 });
 
 afterEach(() => jest.restoreAllMocks());
 
 describe('Recommendations', () => {
-  it('renders nothing while plugin data is loading', () => {
+  it('renders nothing while plugin data is loading', async () => {
     mockUsePluginBridge.mockReturnValue({ loading: true });
 
     const { container } = render(<Recommendations />);
 
-    expect(container).toBeEmptyDOMElement();
+    // waitFor flushes the enabled-lookup state update inside act; the gate must keep rendering null.
+    await waitFor(() => expect(container).toBeEmptyDOMElement());
   });
 
-  it('renders nothing when Kubernetes Monitoring is not installed', () => {
+  it('renders nothing when Kubernetes Monitoring is not installed', async () => {
     mockUsePluginBridge.mockReturnValue({ loading: false, installed: false });
 
     const { container } = render(<Recommendations />);
 
-    expect(container).toBeEmptyDOMElement();
+    await waitFor(() => expect(container).toBeEmptyDOMElement());
   });
 
-  it('renders nothing when the user cannot manage plugins', () => {
+  it('renders nothing when the user cannot manage plugins', async () => {
     jest.mocked(contextSrv.hasPermission).mockReturnValue(false);
     jest.spyOn(contextSrv, 'hasRole').mockReturnValue(false);
 
     const { container } = render(<Recommendations />);
 
-    expect(container).toBeEmptyDOMElement();
+    await waitFor(() => expect(container).toBeEmptyDOMElement());
   });
 
   it('drops recommendations whose app is already enabled', async () => {
-    mockUseAppPluginMetas.mockReturnValue({
-      loading: false,
-      error: undefined,
-      // Metas only need ids for the installed-filter; the full PluginMeta shape is irrelevant here.
-      value: [{ id: 'grafana-exploretraces-app' }, { id: 'grafana-synthetic-monitoring-app' }] as never,
-    });
+    mockIsAppPluginEnabled.mockImplementation(
+      async (id) => id === 'grafana-exploretraces-app' || id === 'grafana-synthetic-monitoring-app'
+    );
 
     render(<Recommendations />);
 
-    // findBy flushes the RecommendationExisting overview fetch inside act before asserting.
+    // findBy flushes the enabled lookup and the RecommendationExisting overview fetch inside act.
     expect(await screen.findByRole('link', { name: /Enable Application Observability/ })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Enable Hosted Traces/ })).not.toBeInTheDocument();
   });
@@ -87,7 +86,7 @@ describe('Recommendations', () => {
   it('collapses and expands the recommendations card', async () => {
     const { user } = render(<Recommendations />);
 
-    expect(screen.getByText('Recommendations for your stack')).toBeInTheDocument();
+    expect(await screen.findByText('Recommendations for your stack')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Hide' })).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Hide' }));
@@ -106,11 +105,11 @@ describe('Recommendations', () => {
     expect(screen.getByRole('button', { name: 'Previous' })).toBeInTheDocument();
   });
 
-  it('loads the collapsed state from local storage', () => {
+  it('loads the collapsed state from local storage', async () => {
     window.localStorage.setItem('grafana.home.recommendations.collapsed', 'true');
     render(<Recommendations />);
 
-    expect(screen.getByRole('button', { name: 'Show' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Show' })).toBeInTheDocument();
     expect(screen.getByText('Recommendations for your stack')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Show' })).toHaveAttribute('aria-expanded', 'false');
   });
@@ -122,6 +121,9 @@ describe('Recommendations', () => {
       screen.getAllByRole('heading', { level: 3 }).find((heading) => heading.closest('div[aria-hidden="false"]'));
     const getVisibleTitle = () => getVisibleHeading()?.textContent?.trim() ?? '';
     const getVisibleSlide = () => getVisibleHeading()?.closest('div[aria-hidden="false"]');
+
+    // The enabled lookup resolves async; wait for the carousel before reading slides.
+    await screen.findByRole('button', { name: 'Next' });
 
     const initialVisibleSlide = getVisibleSlide();
     const initialVisibleTitle = getVisibleTitle();
@@ -146,8 +148,8 @@ describe('Recommendations', () => {
   it('navigates recommendations with dots', async () => {
     const { user } = render(<Recommendations />);
 
+    expect(await screen.findByRole('button', { name: 'Go to recommendation 2' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Go to recommendation 1' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Go to recommendation 2' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Go to recommendation 3' })).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Go to recommendation 3' }));
@@ -185,7 +187,7 @@ describe('Recommendations', () => {
       render(<Recommendations />);
       const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
 
-      const pauseButton = screen.getByRole('button', { name: 'Pause' });
+      const pauseButton = await screen.findByRole('button', { name: 'Pause' });
       await user.click(pauseButton);
 
       expect(screen.getByRole('button', { name: 'Resume' })).toBeInTheDocument();
