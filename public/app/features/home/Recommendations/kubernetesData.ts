@@ -60,7 +60,7 @@ export function computeHealth(o: KubernetesOverview): KubernetesHealth | null {
  * Prometheus datasource, else the first — throwing (handled as a retryable error) when none.
  */
 export async function fetchKubernetesOverview(): Promise<KubernetesOverview> {
-  const frames = await runInstantQueries('prometheus', OVERVIEW_QUERIES);
+  const frames = await runInstantQueries(OVERVIEW_QUERIES);
   return {
     clusters: readScalar(frames, 'clusters') ?? 0,
     pods: readScalar(frames, 'pods') ?? 0,
@@ -77,11 +77,6 @@ export async function fetchKubernetesOverview(): Promise<KubernetesOverview> {
  * the sparkline without surfacing an error.
  */
 export async function fetchClusterCpuSeries(): Promise<FieldSparkline | null> {
-  const frames = await runRangeQuery(
-    'prometheus',
-    'cpu',
-    'sum(rate(container_cpu_usage_seconds_total{container!=""}[5m]))',
-    24
-  );
+  const frames = await runRangeQuery('cpu', 'sum(rate(container_cpu_usage_seconds_total{container!=""}[5m]))', 24);
   return readSeries(frames, 'cpu');
 }

@@ -1,27 +1,36 @@
 import { of } from 'rxjs';
 
-import { createDataFrame, type DataFrame, FieldType } from '@grafana/data';
-import { type DataSourceSrv, getDataSourceSrv } from '@grafana/runtime';
+import { createDataFrame, type DataFrame, FieldType, LoadingState, type PanelData } from '@grafana/data';
+import { createQueryRunner, type DataSourceSrv, getDataSourceSrv } from '@grafana/runtime';
 
 import { readScalar, readSeries, runInstantQueries, runRangeQuery } from './promQuery';
 
 jest.mock('@grafana/runtime', () => ({
   ...jest.requireActual('@grafana/runtime'),
   getDataSourceSrv: jest.fn(),
+  createQueryRunner: jest.fn(),
 }));
 
 const mockGetDataSourceSrv = jest.mocked(getDataSourceSrv);
-const query = jest.fn();
+const mockCreateQueryRunner = jest.mocked(createQueryRunner);
+
+const run = jest.fn();
+const destroy = jest.fn();
 
 function setDataSources(
   list: Array<{ uid: string; isDefault?: boolean; type?: string }> = [
     { uid: 'prom', isDefault: true, type: 'prometheus' },
   ]
 ) {
-  // The mock only implements the two members the query helpers touch; DataSourceSrv is the
+  // The mock only implements the one member the query helpers touch; DataSourceSrv is the
   // named contract those helpers depend on.
-  const srv = { getList: () => list, get: async () => ({ query }) } as unknown as DataSourceSrv;
+  const srv = { getList: () => list } as unknown as DataSourceSrv;
   mockGetDataSourceSrv.mockReturnValue(srv);
+}
+
+function setRunnerResult(series: DataFrame[], state = LoadingState.Done) {
+  const data = { state, series, timeRange: {} } as PanelData;
+  mockCreateQueryRunner.mockReturnValue({ run, get: () => of(data), cancel: jest.fn(), destroy });
 }
 
 function numberFrame(refId: string, values: number[]): DataFrame {
@@ -42,9 +51,11 @@ function seriesFrame(refId: string, times: number[], values: number[]): DataFram
 }
 
 beforeEach(() => {
-  query.mockReset();
-  query.mockReturnValue(of({ data: [] }));
+  run.mockReset();
+  destroy.mockReset();
+  mockCreateQueryRunner.mockClear();
   setDataSources();
+  setRunnerResult([]);
 });
 
 afterEach(() => jest.restoreAllMocks());
@@ -89,72 +100,64 @@ describe('readSeries', () => {
   });
 });
 
-describe('runRangeQuery', () => {
-  it('throws when no datasource of the requested type is configured', async () => {
+describe('runInstantQueries', () => {
+  it('throws when no prometheus datasource is configured', async () => {
     setDataSources([]);
 
-    await expect(runRangeQuery('prometheus', 'cpu', 'sum(rate(x[5m]))', 24)).rejects.toThrow(
-      'No prometheus datasource configured'
-    );
-    expect(query).not.toHaveBeenCalled();
+    await expect(runInstantQueries({ A: 'up' })).rejects.toThrow('No prometheus datasource configured');
+    expect(mockCreateQueryRunner).not.toHaveBeenCalled();
   });
 
-  it('builds a single range target with maxDataPoints=60 over the last N hours and parses the response', async () => {
-    query.mockReturnValue(
-      of({
-        data: {
-          resultType: 'matrix',
-          result: [
-            {
-              metric: {},
-              values: [
-                ['0', '1'],
-                ['1', '2'],
-                ['2', '3'],
-              ],
-            },
-          ],
-        },
-      })
-    );
+  it('runs one instant target per refId against the default datasource and returns the frames', async () => {
+    setDataSources([
+      { uid: 'other', type: 'prometheus' },
+      { uid: 'prom-default', isDefault: true, type: 'prometheus' },
+    ]);
+    setRunnerResult([numberFrame('A', [42]), numberFrame('B', [7])]);
 
-    const frames = await runRangeQuery('prometheus', 'cpu', 'sum(rate(container_cpu_usage_seconds_total[5m]))', 24);
+    const frames = await runInstantQueries({ A: 'up', B: 'count(up)' });
 
-    const request = query.mock.calls[0][0];
-    expect(request.targets).toHaveLength(1);
-    expect(request.targets[0]).toMatchObject({
-      refId: 'cpu',
-      expr: 'sum(rate(container_cpu_usage_seconds_total[5m]))',
-      instant: false,
-      range: true,
-    });
-    expect(request.range.raw).toEqual({ from: 'now-24h', to: 'now' });
-    expect(request.maxDataPoints).toBe(60);
+    const options = run.mock.calls[0][0];
+    expect(options.datasource).toEqual({ uid: 'prom-default', type: 'prometheus' });
+    expect(options.queries).toEqual([
+      { refId: 'A', expr: 'up', instant: true, range: false },
+      { refId: 'B', expr: 'count(up)', instant: true, range: false },
+    ]);
+    expect(readScalar(frames, 'A')).toBe(42);
+    expect(readScalar(frames, 'B')).toBe(7);
+    expect(destroy).toHaveBeenCalled();
+  });
 
-    // The matrix response is parsed into a usable sparkline series for the requested refId.
-    const series = readSeries(frames, 'cpu');
-    expect(series).not.toBeNull();
-    expect(series!.y!.values).toEqual([1, 2, 3]);
+  it('throws (and still destroys the runner) when the query errors', async () => {
+    setRunnerResult([], LoadingState.Error);
+
+    await expect(runInstantQueries({ A: 'up' })).rejects.toThrow('Prometheus query failed');
+    expect(destroy).toHaveBeenCalled();
   });
 });
 
-describe('runInstantQueries', () => {
-  it('throws when no datasource of the requested type is configured', async () => {
+describe('runRangeQuery', () => {
+  it('throws when no prometheus datasource is configured', async () => {
     setDataSources([]);
 
-    await expect(runInstantQueries('prometheus', { A: 'up' })).rejects.toThrow('No prometheus datasource configured');
-    expect(query).not.toHaveBeenCalled();
+    await expect(runRangeQuery('cpu', 'sum(rate(x[5m]))', 24)).rejects.toThrow('No prometheus datasource configured');
+    expect(mockCreateQueryRunner).not.toHaveBeenCalled();
   });
 
-  it('sends an instant target and returns the parsed frames for a single refId', async () => {
-    query.mockReturnValue(of({ data: { resultType: 'vector', result: [{ metric: {}, value: ['1', '42'] }] } }));
+  it('runs a single range target over the last N hours with a stable step and parses the series', async () => {
+    setRunnerResult([seriesFrame('cpu', [0, 1000, 2000], [1, 2, 3])]);
 
-    const frames = await runInstantQueries('prometheus', { A: 'up' });
+    const frames = await runRangeQuery('cpu', 'sum(rate(container_cpu_usage_seconds_total[5m]))', 24);
 
-    const request = query.mock.calls[0][0];
-    expect(request.targets).toHaveLength(1);
-    expect(request.targets[0]).toMatchObject({ refId: 'A', expr: 'up', instant: true, range: false });
+    const options = run.mock.calls[0][0];
+    expect(options.queries).toEqual([
+      { refId: 'cpu', expr: 'sum(rate(container_cpu_usage_seconds_total[5m]))', instant: false, range: true },
+    ]);
+    expect(options.timeRange.raw).toEqual({ from: 'now-24h', to: 'now' });
+    expect(options.maxDataPoints).toBe(60);
 
-    expect(readScalar(frames, 'A')).toBe(42);
+    const series = readSeries(frames, 'cpu');
+    expect(series).not.toBeNull();
+    expect(series!.y!.values).toEqual([1, 2, 3]);
   });
 });
